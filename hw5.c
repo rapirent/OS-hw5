@@ -49,13 +49,14 @@ int main(int argc, char **argv)
     while(status)
     {
         //prompt
-        fputs("0$ ", stdout);
-        // printf("0$");
+        // fputs("0$ ", stdout);
+        printf("0$ ");
         //get the line from stdin
         char *line = NULL;
         ssize_t bufsize = 0; // have getline allocate a buffer for us
         getline(&line, &bufsize, stdin);
         status = build_pipe(split_line(line));
+        // printf("status = %d\n", status);
         // token_container = split_line(line);
         // status = lsh_execute(token_container);
 
@@ -124,15 +125,27 @@ char ***split_line(char *line)
 }
 char *space_strip(char *str)
 {
-    if (!str) { return str; }
+    if(!str)
+    {
+        return str;
+    }
 
-    while (isspace(*str)) { ++str; }
+    while(isspace(*str))
+    {
+        ++str;
+    }
 
     char *last = str;
-    while (*last != '\0') { ++last; }
+    while(*last != '\0')
+    {
+        ++last;
+    }
     last--;
 
-    while (isspace(*last)) { *last-- = '\0'; }
+    while(isspace(*last))
+    {
+        *last-- = '\0';
+    }
 
     return str;
 }
@@ -180,11 +193,11 @@ int build_pipe(char ***args)
         close(pipes_fd[i][0]);
         close(pipes_fd[i][1]);
     }
-    // for(i = 0; i < command_count; i++)
-    // {
-    //     int status;
-    //     wait(&status);
-    // }
+    for(i = 0; i < command_count; i++)
+    {
+        int status;
+        wait(&status);
+    }
     return return_value;
 }
 
@@ -192,8 +205,8 @@ int build_pipe(char ***args)
 int shell_launch(char **argv, int fd_in, int fd_out,
                  int pipes_count, int pipes_fd[][2])
 {
-    pid_t pid;
-    int builtin_function_tag=0;
+    pid_t pid,wpid;
+    int status;
     pid = fork();
     if(pid < 0)
     {
@@ -202,6 +215,7 @@ int shell_launch(char **argv, int fd_in, int fd_out,
     }
     else if(pid == 0)//child process
     {
+        // int builtin_function_tag=0;
         if(fd_in != STDIN_FILENO)
         {
             dup2(fd_in, STDIN_FILENO);
@@ -222,11 +236,9 @@ int shell_launch(char **argv, int fd_in, int fd_out,
             {
                 //builtin_func
                 //raise the flag
-                builtin_function_tag = 1;
+                exit(EXIT_SUCCESS);
             }
         }
-        if(builtin_function_tag == 0)
-        {
             if(execvp(argv[0], argv) == -1)
             {
                 fprintf(stderr,
@@ -234,7 +246,6 @@ int shell_launch(char **argv, int fd_in, int fd_out,
                         argv[0]);
                 exit(EXIT_FAILURE);
             }
-        }
         //never reach here
         exit(EXIT_FAILURE);
         // if(execvp(args[0], args) == -1)
@@ -245,6 +256,11 @@ int shell_launch(char **argv, int fd_in, int fd_out,
     }
     else//parent process
     {
+    // do {
+    //   wpid = waitpid(pid, &status, WUNTRACED);
+    // } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+        // int status = -1;
+        // wait(&status);//wait for the child process
         int i;
         for(i = 0; i < sizeof(builtin_func_name) / sizeof(char *); i++)
         {
@@ -255,9 +271,6 @@ int shell_launch(char **argv, int fd_in, int fd_out,
                 return (*builtin_func[i])(argv);
             }
         }
-        int status = -1;
-        wait(&status);//wait for the child process
-
         // printf("The Child Process Returned with %d\n", WEXITSTATUS(status));
         // do
         // {
