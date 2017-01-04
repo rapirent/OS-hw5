@@ -4,22 +4,21 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <fcntl.h>
 
 #define LSH_RL_BUFSIZE 1024
 #define TOKEN_MAX_BUF 64
 #define ARG_MAX 10
 // #define IGNORE_TOKEN " \t\r\n\a"
 
-void lsh_loop(void);
-char *lsh_read_line(void);
 char ***split_line(char *line);
-int lsh_cd(char **args);
-int lsh_help(char **args);
-int lsh_exit(char **args);
-int lsh_num_builtins();
+int builtin_cd(char **args);
+// int shell_help(char **args);
+int shell_exit(char **args);
 // int lsh_execute(char ***args);
 int build_pipe(char ***args);
 // int lsh_launch(char **args);
+// int shell_help(char **args);
 int shell_launch(char **argv, int fd_in, int fd_out,
                  int pipes_count, int pipes_fd[][2]);
 char *space_strip(char *str);
@@ -27,24 +26,22 @@ char *space_strip(char *str);
 
 char *builtin_func_name[] = {
   "cd",
-  "help",
+  // "help",
   "exit"
 };
 //use the pointer to function to build the shell function
-int (*builtin_func[]) (char **) = {
-  &lsh_cd,
-  &lsh_help,
-  &lsh_exit
+int (*builtin_function_pointer[]) (char **) = {
+    &builtin_cd,
+    // &shell_help,
+    &shell_exit
 };
 
+char *redirect_in = NULL;
+char *redirect_out = NULL;
 
 int main(int argc, char **argv)
 {
-  // Load config files, if any.
-
-  // Run command loop.
-  char **token_container;
-  int status = 1;
+    int status = 1;
 
     while(status)
     {
@@ -53,14 +50,14 @@ int main(int argc, char **argv)
         printf("0$ ");
         //get the line from stdin
         char *line = NULL;
+        redirect_in = NULL;
+        redirect_out = NULL;
         ssize_t bufsize = 0; // have getline allocate a buffer for us
         getline(&line, &bufsize, stdin);
         status = build_pipe(split_line(line));
-        // printf("status = %d\n", status);
-        // token_container = split_line(line);
-        // status = lsh_execute(token_container);
 
-        // free(line);
+
+        free(line);
         // free(token_container);
     }
     return 0;
@@ -71,15 +68,53 @@ char ***split_line(char *line)
     static char *tokens[TOKEN_MAX_BUF+1];
     memset(tokens, '\0', sizeof(tokens));
     int i;
-    tokens[0] = space_strip(strtok(line, "|<>"));
+    tokens[0] = space_strip(strtok(line, "|"));
     for(i = 1; i <= TOKEN_MAX_BUF; i++)
     {
-        tokens[i] = space_strip(strtok(NULL, "|<>"));
+        tokens[i] = space_strip(strtok(NULL, "|"));
         if(tokens[i] == NULL)
         {
             break;
         }
     }
+    int j;
+    for(j = 0; tokens[0][j]; j++)
+    {
+        //'<' first
+        if(tokens[0][j] == '<')
+        {
+            tokens[0] = space_strip(strtok(tokens[0], "<"));
+            redirect_in = space_strip(strtok(NULL, "<"));
+            if(strstr(redirect_in, ">")!=NULL)
+            {
+                redirect_in = space_strip(strtok(redirect_in, ">"));
+                redirect_out = space_strip(strtok(NULL, ">"));
+            }
+            break;
+        }
+        //'>' first
+        if(tokens[0][j] == '>')
+        {
+            tokens[0] = space_strip(strtok(tokens[0], ">"));
+            redirect_out = space_strip(strtok(NULL, ">"));
+            if(strstr(redirect_out, "<")!=NULL)
+            {
+                redirect_out = space_strip(strtok(redirect_out, "<"));
+                redirect_in = space_strip(strtok(NULL, "<"));
+            }
+            break;
+        }
+    }
+    if(redirect_out == NULL && i-1 != 0)
+    {
+        tokens[i-1] = space_strip(strtok(tokens[i-1], ">"));
+        redirect_out = space_strip(strtok(NULL, ">"));
+    }
+    // printf("after\n");
+    // printf("tokens[0]=%s\n",tokens[0]);
+    // printf("redirect_in=%s\n",redirect_in);
+    // printf("tokens[i-1]=%s\n",tokens[i-1]);
+    // printf("redirect_out=%s\n",redirect_out);
     //rows store tokens, columns store the arguments
     static char *argvs_array[TOKEN_MAX_BUF + 1][ARG_MAX + 1];
     static char **token_container[TOKEN_MAX_BUF + 1];
@@ -88,7 +123,6 @@ char ***split_line(char *line)
 
     memset(argvs_array, '\0', sizeof(argvs_array));
     memset(token_container, '\0', sizeof(token_container));
-    int j;
     for(i = 0; tokens[i]; i++)
     {
         token_container[i] = argvs_array[i];
@@ -103,24 +137,6 @@ char ***split_line(char *line)
             }
         }
     }
-    // while(token != NULL)
-    // {
-    //     token_container[position] = token;
-    //     position++;
-
-    //     if(position >= bufsize)
-    //     {
-    //         bufsize += TOKEN_MAX_BUF;
-    //         token_container = realloc(token_container, bufsize * sizeof(char*));
-    //         if (token_container == NULL)
-    //         {
-    //             fprintf(stderr, "ERROR:memory allocation fails\n");
-    //             exit(EXIT_FAILURE);
-    //         }
-    //     }
-    //     token = strtok(NULL, ignore_token);
-    // }
-    // token_container[position] = NULL;
     return token_container;
 }
 char *space_strip(char *str)
@@ -178,14 +194,36 @@ int build_pipe(char ***args)
 
     for(i = 0; i < command_count; i++)
     {
+        int fd_in;
+        int fd_out;
         //first will not be the pipe out
-        int fd_in = (i == 0)?
+        if(redirect_in!=NULL)
+        {
+            fd_in = (i == 0)?
+                    (open(redirect_in,O_RDONLY | O_CREAT, 0644)):
+                    (pipes_fd[i - 1][0]);
+        }
+        else
+        {
+            fd_in = (i == 0)?
                     (STDIN_FILENO):
                     (pipes_fd[i - 1][0]);
+        }
+
         //last will not be the pipe in
-        int fd_out = (i == command_count - 1)?
+        if(redirect_out!=NULL)
+        {
+            fd_out = (i == command_count - 1)?
+                    (open(redirect_out, O_WRONLY | O_CREAT | O_TRUNC, 0644)):
+                    (pipes_fd[i][1]);
+        }
+        else
+        {
+            fd_out = (i == command_count - 1)?
                     (STDOUT_FILENO):
                     (pipes_fd[i][1]);
+
+        }
         return_value = shell_launch(args[i], fd_in, fd_out, pipeline_count, pipes_fd);
     }
     for(i = 0; i < pipeline_count; i++)
@@ -248,19 +286,9 @@ int shell_launch(char **argv, int fd_in, int fd_out,
             }
         //never reach here
         exit(EXIT_FAILURE);
-        // if(execvp(args[0], args) == -1)
-        // {
-            // fprintf(stderr, "ERROR:create child process fails\n");
-        // }
-        // exit(EXIT_SUCCESS);
     }
     else//parent process
     {
-    // do {
-    //   wpid = waitpid(pid, &status, WUNTRACED);
-    // } while (!WIFEXITED(status) && !WIFSIGNALED(status));
-        // int status = -1;
-        // wait(&status);//wait for the child process
         int i;
         for(i = 0; i < sizeof(builtin_func_name) / sizeof(char *); i++)
         {
@@ -268,68 +296,14 @@ int shell_launch(char **argv, int fd_in, int fd_out,
             {
                 //builtin_func
                 //call function by the pointer to function
-                return (*builtin_func[i])(argv);
+                return (*builtin_function_pointer[i])(argv);
             }
         }
-        // printf("The Child Process Returned with %d\n", WEXITSTATUS(status));
-        // do
-        // {
-            // wpid = waitpid(pid, &status, WUNTRACED);
-        // }while(!WIFEXITED(status) && !WIFSIGNALED(status));
     }
     return 1;
 }
 
-///XXX
-
-// int pipe(int fds[2]);
-//fds[0]: read only
-//fds[1]: write only
-// int pipeline(**args)
-// {
-//     int pipe_fd[2];
-//     if(pipe(pipe_fd)==-1)//fail
-//     {
-//         fprintf(stderr, "ERROR:create pipe fails\n");
-//         exit(EXIT_FAILURE);
-//     }
-//     pid_t pid;
-//     pid = fork();
-//     if(pid < 0)
-//     {
-//         fprintf(stderr, "ERROR:create child process fails\n");
-//         exit(EXIT_FAILURE);
-//     }
-//     else if(pid == 0)
-//     {
-//         close(pipe_fd[0]);
-//         dup2(pipe_fd[1], STDIN_FILENO);
-//         close(pipe_fd[1]);
-//         exit(EXIT_SUCCESS);
-//     }
-//     else
-//     {
-//          -- In the Parent Process --------
-
-//         close(pipe_fd[1]); /* Close write end, since we don't need it. */
-//         /* 不會用到 Write-end 的 Process 一定要把 Write-end 關掉，不然 pipe
-//            的 Read-end 會永遠等不到 EOF。 */
-//         dup2(pipe_fd[0], STDIN_FILENO);
-//         close(pipe_fd[0]);
-//         int i;
-//         for (i = 0; i < RANDOM_NUMBER_NEED_COUNT; ++i)
-//         {
-//             int gotnum;
-//             /* 從 Read-end 把資料拿出來 */
-//             read(pipe_fd[0], &gotnum, sizeof(int));
-//             printf("got number : %d\n", gotnum);
-//         }
-//     }
-// }
-/*
-  Builtin function implementations.
-*/
-int lsh_cd(char **args)
+int builtin_cd(char **args)
 {
     if (args[1] == NULL)
     {
@@ -348,18 +322,18 @@ int lsh_cd(char **args)
     return 1;
 }
 
-int lsh_help(char **args)
-{
-    printf("The following function are built in:\n");
-    int i;
-    for(i = 0; i < sizeof(builtin_func_name) / sizeof(char *); i++)
-    {
-        printf("  %s\n", builtin_func_name[i]);
-    }
-    return 1;
-}
+// int shell_help(char **args)
+// {
+//     printf("The following function are built in:\n");
+//     int i;
+//     for(i = 0; i < sizeof(builtin_func_name) / sizeof(char *); i++)
+//     {
+//         printf("  %s\n", builtin_func_name[i]);
+//     }
+//     return 1;
+// }
 
-int lsh_exit(char **args)
+int shell_exit(char **args)
 {
     printf("you choose exit\n");
     return 0;

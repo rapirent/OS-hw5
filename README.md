@@ -10,7 +10,7 @@
 -  compile:
 
 ```
-	gcc -o shell hw5.c -g3
+	gcc -o shell hw5.c
 ```
 
 - execute the shell:
