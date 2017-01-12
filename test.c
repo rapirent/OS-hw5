@@ -1,6 +1,7 @@
 #include <stdio.h>
 int main(void)
 {
-    while(1);
+    printf("123\n");
+	while(1);
     return 0;
 }

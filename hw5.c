@@ -27,13 +27,11 @@ void signal_handle(int case_int);
 
 char *builtin_func_name[] = {
   "cd",
-  // "help",
   "exit"
 };
 //use the pointer to function to build the shell function
 int (*builtin_function_pointer[]) (char **) = {
     &builtin_cd,
-    // &shell_help,
     &shell_exit
 };
 
@@ -167,31 +165,31 @@ char ***split_line(char *line)
     }
     return token_container;
 }
-char *space_strip(char *str)
+char *space_strip(char *string)
 {
-    if(!str)
+    if(!string)
     {
-        return str;
+        return string;
     }
 
-    while(isspace(*str))
+    while(isspace(*string))
     {
-        ++str;
+        ++string;
     }
 
-    char *last = str;
-    while(*last != '\0')
+    char *tmp = string;
+    while(*tmp != '\0')
     {
-        ++last;
+        ++tmp;
     }
-    last--;
+    tmp--;
 
-    while(isspace(*last))
+    while(isspace(*tmp))
     {
-        *last-- = '\0';
+        *tmp-- = '\0';
     }
 
-    return str;
+    return string;
 }
 // int lsh_execute(char ***args)
 int build_pipe(char ***args)
