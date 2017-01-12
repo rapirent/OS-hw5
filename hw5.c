@@ -83,8 +83,6 @@ void signal_handle(int case_int)
             //do nothing
             break;
         case SIGTSTP:
-            //
-            printf("123545");
             break;
         default:
             printf("Capture a signal %d",case_int);
