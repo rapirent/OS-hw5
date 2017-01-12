@@ -1,6 +1,6 @@
 # OS-hw5
 
-## summary
+## Summary
 -  author:丁國騰(Kuo Teng, Ding)
 -  student_id:E94036209
 -  class:資工三乙
@@ -17,3 +17,8 @@
 ```
     ./shell
 ```
+
+## Added Bonus
+-  signal handle:
+    - ctrl + c
+    - ctrl + z
