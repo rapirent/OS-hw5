@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #define LSH_RL_BUFSIZE 1024
 #define TOKEN_MAX_BUF 64
@@ -22,7 +23,7 @@ int build_pipe(char ***args);
 int shell_launch(char **argv, int fd_in, int fd_out,
                  int pipes_count, int pipes_fd[][2]);
 char *space_strip(char *str);
-
+void signal_handle(int case_int);
 
 char *builtin_func_name[] = {
   "cd",
@@ -39,10 +40,22 @@ int (*builtin_function_pointer[]) (char **) = {
 char *redirect_in = NULL;
 char *redirect_out = NULL;
 
+
 int main(int argc, char **argv)
 {
     int status = 1;
-
+    //signal handle
+    int getline_int;
+    if(signal(SIGINT, signal_handle)==SIG_ERR)
+    {
+        fprintf(stderr, "ERROR:signal capture fails\n");
+        exit(EXIT_FAILURE);
+    }
+    if(signal(SIGTSTP, signal_handle)==SIG_ERR)
+    {
+        fprintf(stderr, "ERROR:signal capture fails\n");
+        exit(EXIT_FAILURE);
+    }
     while(status)
     {
         //prompt
@@ -53,15 +66,32 @@ int main(int argc, char **argv)
         redirect_in = NULL;
         redirect_out = NULL;
         ssize_t bufsize = 0; // have getline allocate a buffer for us
-        getline(&line, &bufsize, stdin);
+        getline_int = getline(&line, &bufsize, stdin);
+        if(getline_int<=0)continue;
         status = build_pipe(split_line(line));
 
-
-        free(line);
+        // free(line);
         // free(token_container);
     }
     return 0;
 }
+void signal_handle(int case_int)
+{
+    switch (case_int)
+    {
+        case SIGINT:
+            //do nothing
+            break;
+        case SIGTSTP:
+            //
+            printf("123545");
+            break;
+        default:
+            printf("Capture a signal %d",case_int);
+            break;
+    }
+}
+
 char ***split_line(char *line)
 {
     //pointer to the pointer(array)
@@ -169,7 +199,7 @@ char *space_strip(char *str)
 int build_pipe(char ***args)
 {
     int return_value;
-    if(args[0] == NULL)
+    if(args[0][0] == NULL)
     {
         return 1;
     }
@@ -234,7 +264,8 @@ int build_pipe(char ***args)
     for(i = 0; i < command_count; i++)
     {
         int status;
-        wait(&status);
+        waitpid(0, &status, WUNTRACED);
+        // wait(&status);
     }
     return return_value;
 }
@@ -289,6 +320,10 @@ int shell_launch(char **argv, int fd_in, int fd_out,
     }
     else//parent process
     {
+        if(argv[0][0]=='\0')
+        {
+            return 1;
+        }
         int i;
         for(i = 0; i < sizeof(builtin_func_name) / sizeof(char *); i++)
         {
@@ -321,17 +356,6 @@ int builtin_cd(char **args)
     }
     return 1;
 }
-
-// int shell_help(char **args)
-// {
-//     printf("The following function are built in:\n");
-//     int i;
-//     for(i = 0; i < sizeof(builtin_func_name) / sizeof(char *); i++)
-//     {
-//         printf("  %s\n", builtin_func_name[i]);
-//     }
-//     return 1;
-// }
 
 int shell_exit(char **args)
 {
